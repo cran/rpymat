@@ -1,0 +1,14 @@
+50e747e242e3944926f17e3c274eaa8c *DESCRIPTION
+0bb422dcfd606bd4a2112c5e6381f4a7 *NAMESPACE
+12a83a47bb43ef60f63154a58949757b *NEWS.md
+650ca4cd1045087d708c68a80b32a782 *R/aaa.R
+4ef8fc827a8f9eaecc2dc1b8c6be9875 *R/download.R
+f3e8aab5dd078983e73f3fa8babcedb7 *R/exec_py.R
+d9af22b897e37598b7c0e87db8021853 *R/install.R
+be010eb9b08a434542ac7c9c068e2bd5 *R/ported.R
+370086fc7ea6bb1fffd38b139fbb6df7 *R/zzz.R
+2c5ea007d1bb62808f900589ccd39592 *README.md
+10291bfc3bc6f640db616bba33974e29 *inst/WORDLIST
+96432d012e45bd88a28a87e113f3be8b *inst/matlab-python-versions.txt
+fcaddede39a60ecc5890e42eec04a980 *man/conda-env.Rd
+c6fb3fb680c6575cc39bd3007bce6332 *man/run_script.Rd
