@@ -1,4 +1,28 @@
 
+get_os <- function(){
+  if("windows" %in% tolower(.Platform$OS.type)){
+    return("windows")
+  }
+  os <- tolower(R.version$os)
+  if(startsWith(os, "darwin")){
+    return('darwin')
+  }
+  if(startsWith(os, "linux")){
+    return('linux')
+  }
+  if(startsWith(os, "solaris")){
+    return('solaris')
+  }
+  if(startsWith(os, "win")){
+    return('windows')
+  }
+  return('unknown')
+}
+
+is_arm <- function(){
+  grepl("arch64", R.version$arch)
+}
+
 R_user_dir <- function (package, which = c("data", "config", "cache")) {
   stopifnot(is.character(package), length(package) == 1L)
   which <- match.arg(which)
@@ -51,3 +75,7 @@ setwd2 <- function(d, quiet = FALSE){
   setwd(d)
 }
 
+rand_string <- function (length = 50) {
+  paste(sample(c(letters, LETTERS, 0:9), length, replace = TRUE),
+        collapse = "")
+}

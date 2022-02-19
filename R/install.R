@@ -22,6 +22,7 @@
 #' \code{call_matlab}, \code{...} are the parameters passing to \code{fun}
 #' @param .options 'Matlab' compiler options
 #' @param .debug whether to enable debug mode
+#' @param verbose whether to print messages
 #' @return None
 #' @section Background & Objectives:
 #' Package \code{reticulate} provides sophisticated tool-sets that
@@ -46,14 +47,6 @@
 #' If any other versions of 'Miniconda' is ought to be installed,
 #' please set options \code{"reticulate.miniconda.url"} to change the
 #' source location.
-#'
-#' On Apple's 'M1' machine, there is no official native 'Miniconda' as of
-#' 2021-11-01. The default \code{conda} will be the \href{https://github.com/conda-forge/miniforge/releases/tag/4.9.2-7}{'Mambaforge'} compiled by
-#' the \code{'conda-forge'} team. This version will subject to change in the near
-#' future once the official support is released. Sometimes the 'Mambaforge'
-#' is too advanced and not all the dependencies are properly compiled.
-#' In such cases, you will receive errors like "Package 'xxx' conflicts
-#' for". Try a lower version of \code{python_ver} (such as "3.9").
 #'
 #' If 'Matlab' is to be installed, please specify the 'Matlab' path when
 #' running \code{configure_conda}. If the environment has been setup,
@@ -136,8 +129,23 @@ conda_path <- function(){
 
 #' @rdname conda-env
 #' @export
+conda_bin <- function(){
+  bin_path <- file.path(conda_path(), "condabin", c("conda", "conda.exe", "conda.bin", "conda.bat"))
+  bin_path <- bin_path[file.exists(bin_path)]
+  if(length(bin_path)){
+    bin_path <- bin_path[[1]]
+  }
+  bin_path
+}
+
+#' @rdname conda-env
+#' @export
 env_path <- function(){
-  return( file.path(install_root(), CONDAENV_NAME()) )
+  return( normalizePath(
+    file.path(conda_path(), 'envs', CONDAENV_NAME()),
+    winslash = "\\",
+    mustWork = FALSE
+  ) )
 }
 
 set_conda <- function(temporary = TRUE){
@@ -157,7 +165,7 @@ set_conda <- function(temporary = TRUE){
   Sys.setenv("RETICULATE_MINICONDA_PATH" = conda_path())
 
 
-  conda_path <- file.path(conda_path(), "condabin", c("conda", "conda.exe", "conda.bin"))
+  conda_path <- file.path(conda_path(), "condabin", c("conda", "conda.exe", "conda.bin", "conda.bat"))
   conda_path <- conda_path[file.exists(conda_path)]
   if(length(conda_path)){
     options("reticulate.conda_binary" = conda_path[[1]])
@@ -287,6 +295,8 @@ configure_conda <- function(python_ver = "auto",
                             matlab = NULL,
                             update = FALSE, force = FALSE){
 
+  packages <- unique(c(packages, "numpy"))
+
   error <- TRUE
   set_conda(temporary = TRUE)
 
@@ -382,13 +392,64 @@ add_packages <- function(packages = NULL, python_ver = 'auto', ...) {
 
 }
 
+# Find BLAS path, unix only
+BLAS_path <- function(){
+  fs <- list.files(file.path(env_path(), "lib"), pattern = "^libblas\\..*(dylib|so)", ignore.case = TRUE)
+  prefered <- c("libblas.dylib", "libblas.so")
+
+  if(!length(fs)){ return() }
+  sel <- fs[tolower(fs) %in% prefered]
+  if(length(sel)){
+    return(normalizePath(file.path(env_path(), "lib", sel[[1]])))
+  }
+  return(normalizePath(file.path(env_path(), "lib", fs[[1]])))
+}
+
+
 #' @rdname conda-env
 #' @export
-ensure_rpymat <- function(){
+ensure_rpymat <- function(verbose = TRUE){
   set_conda(temporary = FALSE)
-  Sys.setenv("RETICULATE_PYTHON" = normalizePath(file.path(env_path(), 'bin', "python")))
-  reticulate::use_condaenv(CONDAENV_NAME(), required = TRUE)
-  reticulate::py_config()
+
+  if(!dir.exists(env_path())) {
+    configure_conda()
+  }
+
+  blas <- NULL
+  if(get_os() == "windows"){
+    # C:\Users\KickStarter\AppData\Local\r-rpymat\miniconda\python.exe
+    python_bin <- normalizePath(file.path(env_path(), "python.exe"), winslash = "\\")
+  } else {
+    python_bin <- normalizePath(file.path(env_path(), 'bin', "python"))
+
+    # Also there are some inconsistency between BLAS used in R and conda packages
+    # Mainly on OSX (because Apple dropped libfortran), but not limited
+    # https://github.com/rstudio/reticulate/issues/456#issuecomment-1046045432
+    omp_threads <- Sys.getenv("OMP_NUM_THREADS", unset = NA)
+    if(is.na(omp_threads)){
+      Sys.setenv("OMP_NUM_THREADS" = "1")
+    }
+    # Find OPENBLAS library
+    blas <- BLAS_path()
+    if(length(blas)){
+      Sys.setenv(OPENBLAS = blas)
+    }
+
+  }
+
+  Sys.setenv("RETICULATE_PYTHON" = python_bin)
+
+
+  # reticulate::use_condaenv(CONDAENV_NAME(), required = TRUE)
+  # reticulate::py_config()
+  conf <- reticulate::py_discover_config(use_environment = env_path())
+  if(verbose){
+    print(conf)
+    if(length(blas)){
+      cat("\nOPENBLAS =", blas, "\n")
+    }
+  }
+  invisible(conf)
 }
 
 #' @rdname conda-env
