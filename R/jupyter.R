@@ -52,7 +52,7 @@ add_jupyter <- function(..., register_R = TRUE){
   add_packages(packages = c("jupyter", "numpy", "h5py", "matplotlib", "pandas", "jupyterlab"), ...)
   try({
     add_packages(packages = c("jupyterlab-git", "ipywidgets", "jupyter-server-proxy"), channel = "conda-forge")
-    add_packages(c('jupyterlab_latex', 'jupyterlab_github', 'matlab_kernel'), pip = TRUE)
+    # add_packages(c('jupyterlab_latex', 'jupyterlab_github', 'matlab_kernel'), pip = TRUE)
   })
   if(register_R && system.file("kernelspec", package = "IRkernel") != ""){
     jupyter_register_R(...)
@@ -226,7 +226,7 @@ jupyter_launch <- function(host = "127.0.0.1", port = 8888,
   }
 
   if(async && !dry_run){
-    if(!rstudioapi::isAvailable("1.4")){
+    if(!rstudioapi::isAvailable("1.4", child_ok = TRUE)){
       stop("`async=TRUE` option only runs in RStudio (>=1.4)")
     }
     tf <- tempfile()
@@ -278,7 +278,7 @@ jupyter_check_launch <- function(port = 8888, host = "127.0.0.1",
     }
   })
   if(identical(async, "auto")){
-    async <- rstudioapi::isAvailable("1.4")
+    async <- rstudioapi::isAvailable("1.4", child_ok = TRUE)
   } else {
     async <- as.logical(async)
   }

@@ -35,7 +35,18 @@ run_script <- function(x, work_dir = NULL, local = FALSE, convert = FALSE){
   }
 
   x <- normalizePath(x, mustWork = TRUE)
-  ensure_rpymat()
+  ensure_rpymat(verbose = FALSE)
   reticulate::py_run_file(file = x, local = local, convert = convert)
 }
 
+#' Enable interactive 'python' from R
+#' @description Allows users to type 'python' command from R
+#' console for quick code evaluation or debugging.
+#' @param ... passed to \code{\link[reticulate]{repl_python}}
+#' in \code{'reticulate'} package
+#' @return See \code{\link[reticulate]{repl_python}}
+#' @export
+repl_python <- function(...) {
+  ensure_rpymat(verbose = FALSE)
+  reticulate::repl_python(...)
+}
