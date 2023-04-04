@@ -10,6 +10,7 @@
 #' @param force whether to force install the 'Miniconda' even a previous
 #' version exists; default is false. Setting \code{false=TRUE} rarely
 #' works. Please see 'Configuration'.
+#' @param cache whether to use cached configurations; default is true
 #' @param env_name alternative environment name to use; default is
 #' \code{"rpymat-conda-env"}
 #' @param ask whether to ask for user's agreement to remove the repository.
@@ -95,7 +96,7 @@ NULL
 #' @rdname conda-env
 #' @export
 CONDAENV_NAME <- local({
-  name <- "rpymat-conda-env"
+  name <- NULL
   function(env_name){
     if(!missing(env_name)){
       stopifnot(length(env_name) == 1 && is.character(env_name))
@@ -105,6 +106,13 @@ CONDAENV_NAME <- local({
         name <<- sprintf("rpymat-conda-env-%s", env_name)
       }
       message("Environment switched to: ", name)
+    } else if(is.null(name)) {
+      conda_prefix <- trimws(Sys.getenv("R_RPYMAT_CONDA_PREFIX", unset = ""))
+      if( conda_prefix == "" ) {
+        return("rpymat-conda-env")
+      } else {
+        return(sprintf("%s-rpymat-conda-env", basename(conda_prefix)))
+      }
     }
     name
   }
@@ -124,12 +132,24 @@ install_root <- function(){
 #' @rdname conda-env
 #' @export
 conda_path <- function(){
+  conda_exe <- Sys.getenv("R_RPYMAT_CONDA_EXE", unset = "")
+  if( !identical(conda_exe, "") ) {
+    path <- dirname(dirname(conda_exe))
+    if(dir.exists(path)) {
+      return(path)
+    }
+  }
   file.path(install_root(), "miniconda", fsep = "/")
 }
 
 #' @rdname conda-env
 #' @export
 conda_bin <- function(){
+  conda_exe <- Sys.getenv("R_RPYMAT_CONDA_EXE", unset = "")
+  if( !identical(conda_exe, "") && file.exists(conda_exe) ) {
+    return( conda_exe )
+  }
+
   bin_path <- file.path(install_root(), "miniconda", "condabin", c("conda", "conda.exe", "conda.bin", "conda.bat"), fsep = "/")
   bin_path <- bin_path[file.exists(bin_path)]
   if(length(bin_path)){
@@ -147,8 +167,23 @@ conda_bin <- function(){
 #' @rdname conda-env
 #' @export
 env_path <- function(){
+
+  current_env <- Sys.getenv("R_RPYMAT_CONDA_PREFIX", unset = "")
+  conda_exe <- Sys.getenv("R_RPYMAT_CONDA_EXE", unset = "")
+
+  re <- NULL
+  if(!identical(current_env, "")) {
+    re <- file.path(dirname(current_env), CONDAENV_NAME())
+  } else if( !identical(conda_exe, "") ) {
+    re <- file.path(dirname(dirname(conda_exe)), 'envs', CONDAENV_NAME())
+  }
+
+  if(length(re) != 1) {
+    re <- file.path(install_root(), "miniconda", 'envs', CONDAENV_NAME())
+  }
+
   return( normalizePath(
-    file.path(install_root(), "miniconda", 'envs', CONDAENV_NAME()),
+    re,
     winslash = "\\",
     mustWork = FALSE
   ) )
@@ -327,10 +362,10 @@ configure_conda <- function(python_ver = "auto",
     }
   }
 
-  if(dir.exists(path) && !force){
+  if(!conda_is_user_defined() && (dir.exists(path) && !force)){
     stop("conda path already exists. Please consider removing it by calling `rpymat::remove_conda()`")
   }
-  if(force || update || !dir.exists(path)){
+  if(conda_is_user_defined() && (force || update || !dir.exists(path))){
     miniconda_installer_url()
     tryCatch({
       reticulate::install_miniconda(path = path, update = update, force = force)
@@ -362,26 +397,52 @@ configure_conda <- function(python_ver = "auto",
   error <- FALSE
 }
 
+
+conda_is_user_defined <- function() {
+  actual_root <- normalizePath(file.path(conda_path(), ".."), mustWork = FALSE)
+  root <- normalizePath(install_root(), mustWork = FALSE)
+  !identical(actual_root, root)
+}
+
 #' @rdname conda-env
 #' @export
 remove_conda <- function(ask = TRUE){
-  root <- install_root()
   if(!interactive()){
     stop("Must run in interactive mode")
   }
-  if( !dir.exists(root) ){ return(invisible()) }
-  if( ask ){
-    message(sprintf("Removing conda at %s? \nThis operation only affects `rpymat` package and is safe.", root))
-    ans <- utils::askYesNo("", default = FALSE, prompts = c("yes", "no", "cancel - default is `no`"))
-    if(!isTRUE(ans)){
-      if(is.na(ans)){
-        message("Abort")
-      }
-      return(invisible())
-    }
-  }
 
-  unlink(root, recursive = TRUE, force = TRUE)
+  if(conda_is_user_defined()) {
+    envpath <- env_path()
+    if( !dir.exists(envpath) ){ return(invisible()) }
+    if( ask ){
+      message(sprintf("Removing conda at %s? \nThis operation only affects `rpymat` package and is safe.", envpath))
+      ans <- utils::askYesNo("", default = FALSE, prompts = c("yes", "no", "cancel - default is `no`"))
+      if(!isTRUE(ans)){
+        if(is.na(ans)){
+          message("Abort")
+        }
+        return(invisible())
+      }
+    }
+
+    system2(conda_bin(), args = c(sprintf("remove --name %s --all --yes", shQuote(CONDAENV_NAME()))))
+
+  } else {
+    root <- normalizePath(install_root(), mustWork = FALSE)
+
+    if( !dir.exists(root) ){ return(invisible()) }
+    if( ask ){
+      message(sprintf("Removing conda at %s? \nThis operation only affects `rpymat` package and is safe.", root))
+      ans <- utils::askYesNo("", default = FALSE, prompts = c("yes", "no", "cancel - default is `no`"))
+      if(!isTRUE(ans)){
+        if(is.na(ans)){
+          message("Abort")
+        }
+        return(invisible())
+      }
+    }
+    unlink(root, recursive = TRUE, force = TRUE)
+  }
 
   return(invisible())
 }
@@ -420,49 +481,62 @@ BLAS_path <- function(){
 
 #' @rdname conda-env
 #' @export
-ensure_rpymat <- function(verbose = TRUE){
-  set_conda(temporary = FALSE)
+ensure_rpymat <- local({
 
-  if(!dir.exists(env_path())) {
-    configure_conda()
-  }
-
+  conf <- NULL
+  conda_prefix <- NULL
   blas <- NULL
-  if(get_os() == "windows"){
-    # C:\Users\KickStarter\AppData\Local\r-rpymat\miniconda\python.exe
-    python_bin <- normalizePath(file.path(env_path(), "python.exe"), winslash = "\\")
-  } else {
-    python_bin <- normalizePath(file.path(env_path(), 'bin', "python"))
 
-    # Also there are some inconsistency between BLAS used in R and conda packages
-    # Mainly on OSX (because Apple dropped libfortran), but not limited
-    # https://github.com/rstudio/reticulate/issues/456#issuecomment-1046045432
-    omp_threads <- Sys.getenv("OMP_NUM_THREADS", unset = NA)
-    if(is.na(omp_threads)){
-      Sys.setenv("OMP_NUM_THREADS" = "1")
-    }
-    # Find OPENBLAS library
-    blas <- BLAS_path()
-    if(length(blas)){
-      Sys.setenv(OPENBLAS = blas)
+  function(verbose = TRUE, cache = TRUE){
+    set_conda(temporary = FALSE)
+
+    if(
+      !cache || !inherits(conf, "py_config") ||
+      !identical(conda_prefix, Sys.getenv("R_RPYMAT_CONDA_PREFIX", unset = ""))
+    ) {
+      if(!dir.exists(env_path())) {
+        configure_conda()
+      }
+
+      if(get_os() == "windows"){
+        # C:\Users\KickStarter\AppData\Local\r-rpymat\miniconda\python.exe
+        python_bin <- normalizePath(file.path(env_path(), "python.exe"), winslash = "\\")
+      } else {
+        python_bin <- normalizePath(file.path(env_path(), 'bin', "python"))
+
+        # Also there are some inconsistency between BLAS used in R and conda packages
+        # Mainly on OSX (because Apple dropped libfortran), but not limited
+        # https://github.com/rstudio/reticulate/issues/456#issuecomment-1046045432
+        omp_threads <- Sys.getenv("OMP_NUM_THREADS", unset = NA)
+        if(is.na(omp_threads)){
+          Sys.setenv("OMP_NUM_THREADS" = "1")
+        }
+        # Find OPENBLAS library
+        blas <<- BLAS_path()
+        if(length(blas)){
+          Sys.setenv(OPENBLAS = blas)
+        }
+
+      }
+
+      Sys.setenv("RETICULATE_PYTHON" = python_bin)
+
+
+      # reticulate::use_condaenv(CONDAENV_NAME(), required = TRUE)
+      # reticulate::py_config()
+      conf <<- reticulate::py_discover_config(use_environment = env_path())
+      conda_prefix <<- Sys.getenv("R_RPYMAT_CONDA_PREFIX", unset = "")
     }
 
+    if(verbose){
+      print(conf)
+      if(length(blas)){
+        cat("\nOPENBLAS =", blas, "\n")
+      }
+    }
+    invisible(conf)
   }
-
-  Sys.setenv("RETICULATE_PYTHON" = python_bin)
-
-
-  # reticulate::use_condaenv(CONDAENV_NAME(), required = TRUE)
-  # reticulate::py_config()
-  conf <- reticulate::py_discover_config(use_environment = env_path())
-  if(verbose){
-    print(conf)
-    if(length(blas)){
-      cat("\nOPENBLAS =", blas, "\n")
-    }
-  }
-  invisible(conf)
-}
+})
 
 #' @rdname conda-env
 #' @export
