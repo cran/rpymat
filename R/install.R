@@ -10,6 +10,8 @@
 #' @param force whether to force install the 'Miniconda' even a previous
 #' version exists; default is false. Setting \code{false=TRUE} rarely
 #' works. Please see 'Configuration'.
+#' @param standalone whether to install \code{conda} regardless of existing
+#' \code{conda} environment
 #' @param cache whether to use cached configurations; default is true
 #' @param env_name alternative environment name to use; default is
 #' \code{"rpymat-conda-env"}
@@ -24,7 +26,7 @@
 #' @param .options 'Matlab' compiler options
 #' @param .debug whether to enable debug mode
 #' @param verbose whether to print messages
-#' @return None
+#' @returns None
 #' @section Background & Objectives:
 #' Package \code{reticulate} provides sophisticated tool-sets that
 #' allow us to call \code{python} functions within \code{R}. However, the
@@ -200,7 +202,12 @@ set_conda <- function(temporary = TRUE){
   if(old_path == ""){
     old_path <- getOption("reticulate.conda_binary", "")
   }
-  if(temporary && old_path != ""){
+  if(
+    temporary && length(old_path) == 1 && old_path != "" &&
+    tryCatch({
+      isTRUE(file.exists(old_path))
+    }, error = function(e) { FALSE })
+  ){
     parent_env <- parent.frame()
     do.call(on.exit, list(bquote({
       options("reticulate.conda_binary" = .(getOption("reticulate.conda_binary", "")))
@@ -216,6 +223,8 @@ set_conda <- function(temporary = TRUE){
   conda_path <- conda_path[file.exists(conda_path)]
   if(length(conda_path)){
     options("reticulate.conda_binary" = conda_path[[1]])
+  } else {
+    options("reticulate.conda_binary" = NULL)
   }
 }
 
@@ -337,10 +346,9 @@ auto_python_version <- function(matlab){
 
 #' @rdname conda-env
 #' @export
-configure_conda <- function(python_ver = "auto",
-                            packages = NULL,
-                            matlab = NULL,
-                            update = FALSE, force = FALSE){
+configure_conda <- function(
+    python_ver = "auto", packages = NULL, matlab = NULL, update = FALSE,
+    force = FALSE, standalone = FALSE){
 
   packages <- unique(c(packages, "numpy"))
 
@@ -362,10 +370,21 @@ configure_conda <- function(python_ver = "auto",
     }
   }
 
-  if(!conda_is_user_defined() && (dir.exists(path) && !force)){
+  if( dir.exists(path) && !conda_is_user_defined() && !force ) {
     stop("conda path already exists. Please consider removing it by calling `rpymat::remove_conda()`")
   }
-  if(conda_is_user_defined() && (force || update || !dir.exists(path))){
+
+  miniconda_needs_install <- FALSE
+  if( force || update || !dir.exists(path) ) {
+    # needs install
+    miniconda_needs_install <- TRUE
+    if( !standalone && conda_is_user_defined() ) {
+      # rpymat is inside of a conda environment
+      miniconda_needs_install <- FALSE
+    }
+  }
+
+  if( miniconda_needs_install ){
     miniconda_installer_url()
     tryCatch({
       reticulate::install_miniconda(path = path, update = update, force = force)
@@ -399,8 +418,8 @@ configure_conda <- function(python_ver = "auto",
 
 
 conda_is_user_defined <- function() {
-  actual_root <- normalizePath(file.path(conda_path(), ".."), mustWork = FALSE)
-  root <- normalizePath(install_root(), mustWork = FALSE)
+  actual_root <- normalizePath(conda_path(), mustWork = FALSE, winslash = "/")
+  root <- normalizePath(file.path(install_root(), "miniconda"), mustWork = FALSE, winslash = "/")
   !identical(actual_root, root)
 }
 

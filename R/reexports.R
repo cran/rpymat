@@ -1,3 +1,6 @@
+#' @export
+glue::glue
+
 #' @name reticulate-reexports
 #' @title Wrappers around \code{'reticulate'} package
 #' @description Almost the same with \code{'reticulate'} functions, with
@@ -13,7 +16,7 @@
 #' \code{'reticulate'} functions as data inputs
 #' @param name,silent,key,value,default other parameters passing to the
 #' \code{'reticulate'} functions
-#' @return \code{'Python'} built-in objects
+#' @returns \code{'Python'} built-in objects
 #' @examples
 #'
 #' library(rpymat)
@@ -41,10 +44,22 @@ NULL
 
 #' @rdname reticulate-reexports
 #' @export
+import_main <- function(convert = FALSE) {
+  ensure_rpymat(verbose = FALSE)
+  return(reticulate::import_main(convert = convert))
+}
+
+
+#' @rdname reticulate-reexports
+#' @export
 tuple <- function (..., convert = FALSE) {
   ensure_rpymat(verbose = FALSE)
   return(reticulate::tuple(convert = convert, ...))
 }
+
+#' @rdname reticulate-reexports
+#' @export
+py_tuple <- tuple
 
 #' @rdname reticulate-reexports
 #' @export
