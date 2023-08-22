@@ -6,6 +6,7 @@
 #' @param host,port 'IP' and port of the hosting 'URL'
 #' @param open_browser whether to open the browser once launched
 #' @param token access token of the notebook
+#' @param base_url base address, default is \code{'/jupyter/'}
 #' @param async whether to open the notebook in the background
 #' @param dry_run whether to display the command instead of executing them;
 #' used to debug the code
@@ -49,7 +50,7 @@ NULL
 #' @rdname jupyter
 #' @export
 add_jupyter <- function(..., register_R = TRUE){
-  add_packages(packages = c("jupyter", "numpy", "h5py", "matplotlib", "pandas", "jupyterlab"), ...)
+  add_packages(packages = c("notebook", "numpy", "h5py", "matplotlib", "pandas", "jupyterlab"), channel = "conda-forge", ...)
   try({
     add_packages(packages = c("jupyterlab-git", "ipywidgets", "jupyter-server-proxy"), channel = "conda-forge")
     # add_packages(c('jupyterlab_latex', 'jupyterlab_github', 'matlab_kernel'), pip = TRUE)
@@ -141,20 +142,27 @@ jupyter_register_R <- function (user = NULL, name = "ir", displayname = "R", rpr
 }
 
 #' @rdname jupyter
-jupyter_options <- function(root_dir, host = "127.0.0.1", port = 8888, open_browser = FALSE, token = rand_string()){
+jupyter_options <- function(
+    root_dir, host = "127.0.0.1", port = 8888, open_browser = FALSE,
+    token = rand_string(), base_url = "/jupyter/"){
   root_dir <- normalizePath(root_dir, winslash = "\\", mustWork = TRUE)
   root_dir <- gsub('\\\\', '\\\\\\\\', root_dir)
+
+  base_url <- trimws(gsub("[/|\\\\]{1,}", "/", base_url))
+  if(!startsWith(base_url, "/")) {
+    base_url <- sprintf("/%s", base_url)
+  }
 
   glue::glue(
     .sep = "\n",
     # 'c.GatewayClient.url = "http://{host}:{port+1}"',
-
+    'import os',
     'c.ServerApp.ip = "{host}"',
     'c.ServerApp.allow_origin = "*"',
     'c.ServerApp.port = {port}',
     sprintf('c.ServerApp.open_browser = %s', ifelse(isTRUE(open_browser), "True", "False")),
-    'c.ServerApp.base_url = "/jupyter/"',
-    'c.ServerApp.token = "{token}"',
+    'c.ServerApp.base_url = "{base_url}"',
+    'c.ServerApp.token = os.getenv("JUPYTER_TOKEN", "{token}")',
     'c.ServerApp.password = ""',
     'c.ServerApp.root_dir = "{root_dir}"',
 
@@ -212,18 +220,13 @@ jupyter_launch <- function(host = "127.0.0.1", port = 8888,
   ), con = file.path(conf_dir, "custom", "custom.js"))
   # JUPYTER_CONFIG_DIR
 
-  quoted_cmd <- shQuote(jupyter_bin(), type = "cmd")
+  quoted_cmd <- shQuote(jupyter_bin())
   command <- c(
     sprintf("%s --paths", quoted_cmd),
     sprintf("%s lab", quoted_cmd)
   )
-  env <- sprintf("JUPYTER_CONFIG_DIR=%s", shQuote(conf_dir, type = "cmd"))
-
-  if(get_os() == "windows"){
-    env_list <- list(`JUPYTER_CONFIG_DIR` = conf_dir)
-  } else {
-    env_list <- list()
-  }
+  env <- sprintf("JUPYTER_CONFIG_DIR=%s", shQuote(conf_dir))
+  env_list <- list(`JUPYTER_CONFIG_DIR` = conf_dir)
 
   if(async && !dry_run){
     tf <- tempfile()
@@ -248,8 +251,11 @@ jupyter_launch <- function(host = "127.0.0.1", port = 8888,
     }
 
   } else {
-    run_command(command, workdir = workdir, env_list = env_list,
-                env = env, wait = TRUE, dry_run = dry_run)
+    re <- run_command(command, workdir = workdir, env_list = env_list,
+                      env = env, wait = TRUE, dry_run = dry_run)
+    if( dry_run ) {
+      return(re)
+    }
   }
 
   return(invisible())
